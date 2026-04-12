@@ -20,7 +20,419 @@
             --success: #10b981; --proxy-color: #f59e0b; --proxy-bg: #fffbeb;
             --warning: #f59e0b;
         }
+        [data-theme="dark"] {<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">気象監視統合エクスプローラー</title>
+    
+    <!-- Geminiアイコン設定 -->
+    <link rel="icon" href="multi-dashboard-icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="multi-dashboard-icon.png">
+    
+    <!-- 並び替えライブラリ -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    
+    <style>
+        /* テーマカラーの設定 */
+        :root {
+            --bg: #f0f2f5; --panel: #ffffff; --primary: #2563eb; --text: #1e293b;
+            --sub-bg: #f8fafc; --border: #e2e8f0; --header-bg: #1e293b; --accent: #ef4444;
+            --success: #10b981; --proxy-color: #f59e0b; --proxy-bg: #fffbeb;
+            --warning: #f59e0b;
+        }
         [data-theme="dark"] {
+            --bg: #0f172a; --panel: #1e293b; --primary: #3b82f6; --text: #f1f5f9;
+            --sub-bg: #334155; --border: #475569; --header-bg: #020617; 
+            --proxy-color: #fbbf24; --proxy-bg: #451a03;
+        }
+        
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; transition: background 0.3s, color 0.3s; }
+        header { background: var(--header-bg); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 100; flex-wrap: wrap; gap: 10px; }
+        main { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; }
+        
+        /* ボタンデザイン */
+        .btn { cursor: pointer; border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.85rem; font-weight: bold; transition: 0.2s; display: inline-flex; align-items: center; gap: 5px; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--accent); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-ghost { background: #475569; color: white; }
+        .btn-sm { padding: 3px 6px; font-size: 0.75rem; }
+
+        /* ドラッグ＆ドロップエリア */
+        .drop-zones-container { display: flex; gap: 15px; margin-bottom: 15px; }
+        .drop-zone { flex: 1; border: 2px dashed; padding: 10px; text-align: center; border-radius: 12px; transition: all 0.3s; display: flex; flex-direction: column; justify-content: center; min-height: 50px;}
+        .drop-zone-normal { border-color: var(--primary); background: var(--sub-bg); }
+        .drop-zone-proxy { border-color: var(--proxy-color); background: var(--proxy-bg); color: var(--proxy-color); }
+        .drop-zone.dragover { transform: scale(1.02); opacity: 0.8; }
+
+        /* 画面枠の設定 */
+        #multi-grid { display: flex; flex-wrap: wrap; gap: 15px; padding-bottom: 50px; }
+        .resizable-frame { resize: both; overflow: hidden; min-width: 300px; min-height: 300px; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .frame-header { background: var(--sub-bg); padding: 5px 8px; font-size: 0.8rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); }
+        .multi-handle { cursor: grab; color: #94a3b8; font-size: 1.2rem; margin-right: 5px; }
+        .proxy-badge { font-size: 0.6rem; background: var(--proxy-color); color: white; padding: 2px 6px; border-radius: 4px; margin-left: 5px; font-weight: bold; }
+        .auto-reload-select { font-size: 0.7rem; padding: 2px; border-radius: 4px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+
+        /* ロックモード時のスタイル */
+        body.locked-mode .multi-handle { display: none; }
+        body.locked-mode .resizable-frame { resize: none !important; border-color: transparent; }
+        body.locked-mode .drop-zones-container { display: none; }
+    </style>
+</head>
+<body onload="init()">
+
+<header>
+    <div style="font-weight:bold; font-size:1.1rem; display:flex; align-items:center; gap:10px;" id="main-title">
+        🛰️ 気象監視エクスプローラー
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <!-- 新機能：一括リロードとロック -->
+        <button class="btn btn-ghost" onclick="reloadAll()">🔄 一括リロード</button>
+        <button id="lock-btn" class="btn btn-warning" onclick="toggleLock()">🔓 編集中</button>
+        
+        <div style="width: 1px; height: 20px; background: #475569; margin: 0 5px;"></div>
+        
+        <button class="btn btn-primary" onclick="addUrlWithProxyPrompt()">➕ 窓を手動追加</button>
+        <button class="btn btn-success" onclick="document.getElementById('appendFile').click()">📂 JSON追加</button>
+        <input type="file" id="appendFile" style="display:none" onchange="importJSON(event, true)">
+        <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()">🔄 入れ替え</button>
+        <input type="file" id="importFile" style="display:none" onchange="importJSON(event, false)">
+        
+        <!-- 新機能：HTMLとして書き出し（独立アプリ化） -->
+        <button class="btn btn-success" onclick="exportHTML()">🚀 アプリとして保存 (HTML)</button>
+        
+        <!-- 追加：上書き保存ボタン（オリジナルでは非表示、生成アプリでのみ表示される） -->
+        <button id="overwrite-btn" class="btn btn-warning" style="display:none;" onclick="overwriteHTML()">💾 上書き保存</button>
+        
+        <button class="btn btn-primary" onclick="exportJSON()">💾 JSON保存</button>
+        <button class="btn btn-danger" onclick="clearGrid()">🗑️ 全削除</button>
+        <button class="btn" onclick="toggleTheme()" style="background:transparent; font-size:1.2rem; padding:0;">🌓</button>
+    </div>
+</header>
+
+<main>
+    <div class="drop-zones-container">
+        <div id="drop-normal" class="drop-zone drop-zone-normal" ondragover="handleDragOver(event, this)" ondragleave="handleDragLeave(event, this)" ondrop="handleDropLink(event, false, this)">
+            <h3 style="margin:0; font-size:1rem; color:var(--text);">🔵 普通に開く</h3>
+            <span style="font-size:0.75rem; font-weight:normal; color:#64748b;">(対応サイト用：ここにURLをドロップ)</span>
+        </div>
+        <div id="drop-proxy" class="drop-zone drop-zone-proxy" ondragover="handleDragOver(event, this)" ondragleave="handleDragLeave(event, this)" ondrop="handleDropLink(event, true, this)">
+            <h3 style="margin:0; font-size:1rem;">🟠 プロキシで開く</h3>
+            <span style="font-size:0.75rem; font-weight:normal; opacity:0.8;">(気象庁など弾かれるサイトはこちらへ)</span>
+        </div>
+    </div>
+    
+    <div id="multi-grid"></div>
+</main>
+
+<!-- 自動復元用のデータ（HTML保存時にここにデータが書き込まれます） -->
+<script id="saved-data" type="application/json">[]</script>
+
+<script>
+    const PROXY_BASE = "https://broken-disk-2256.tennis03061996.workers.dev/?url=";
+    let sortableInstance = null;
+    let isLocked = false;
+
+    // --- 初期化処理 ---
+    function init() {
+        document.documentElement.setAttribute('data-theme', localStorage.getItem('grandTheme') || 'light');
+        sortableInstance = Sortable.create(document.getElementById('multi-grid'), { handle: '.multi-handle', animation: 150 });
+        
+        // オートリロードの監視ループ（10秒ごとにチェック）
+        setInterval(checkAutoReloads, 10000);
+
+        // HTMLに埋め込まれたデータがあれば自動で復元する（HTML保存アプリ化機能の要）
+        const savedDataEl = document.getElementById('saved-data');
+        if (savedDataEl && savedDataEl.textContent.trim().length > 5) {
+            try {
+                const frames = JSON.parse(savedDataEl.textContent);
+                if(frames.length > 0) {
+                    document.getElementById('multi-grid').innerHTML = '';
+                    frames.forEach(f => createMultiFrame(f.url, f.name, f.scale, f.width, f.height, f.useProxy, f.autoReload));
+                    
+                    // ★追加：データを持って起動（＝生成されたアプリ）なら上書き保存ボタンを表示！
+                    const overwriteBtn = document.getElementById('overwrite-btn');
+                    if(overwriteBtn) overwriteBtn.style.display = 'inline-flex';
+                }
+            } catch(e) { console.error("初期データの読み込みに失敗:", e); }
+        }
+    }
+
+    // --- 新機能：上書き保存（同じタイトルで再保存） ---
+    function overwriteHTML() {
+        // 現在のタイトルをそのまま使う（名前を聞かない）
+        const title = document.getElementById('page-title').textContent || "マイ気象ダッシュボード";
+
+        // 現在の状態を取得
+        const frames = getFramesData();
+        
+        if(frames.length === 0) {
+            if(!confirm("窓が1つもありませんが、空のアプリとして保存しますか？")) return;
+        }
+
+        // 画面のHTML（DOM）を複製
+        const clonedDoc = document.documentElement.cloneNode(true);
+
+        // multi-gridの中身を空にする
+        const gridEl = clonedDoc.querySelector('#multi-grid');
+        if (gridEl) gridEl.innerHTML = '';
+
+        // 最新のデータを埋め込む
+        const savedDataEl = clonedDoc.querySelector('script#saved-data');
+        if (savedDataEl) savedDataEl.textContent = JSON.stringify(frames);
+
+        // 文字列として結合してダウンロード
+        let htmlContent = "<!DOCTYPE html>\n" + clonedDoc.outerHTML;
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${title}.html`;
+        a.click();
+        
+        alert(`『${title}』の設定を保存したよ！\n（※ブラウザの仕様により、ダウンロードフォルダに同じ名前で保存されます）`);
+    }
+
+    // --- 新機能：HTMLアプリとして保存 ---
+    function exportHTML() {
+        // 保存するファイル名（タイトル）を設定
+        const title = prompt("保存するファイルの名前（タイトル）を入力してね！\nこれをダブルクリックするだけで今の監視画面が開くようになるよ！", "マイ気象ダッシュボード");
+        if (!title) return;
+
+        // 現在の状態を取得
+        const frames = getFramesData();
+        
+        if(frames.length === 0) {
+            if(!confirm("窓が1つもありませんが、空のアプリとして保存しますか？")) return;
+        }
+
+        // 画面のHTML（DOM）を裏で複製して、書き出し用のデータを作る
+        const clonedDoc = document.documentElement.cloneNode(true);
+
+        // 複製したHTMLのタイトルを書き換える
+        const titleEl = clonedDoc.querySelector('title#page-title');
+        if (titleEl) titleEl.textContent = title;
+        
+        const mainTitleEl = clonedDoc.querySelector('div#main-title');
+        if (mainTitleEl) mainTitleEl.innerHTML = `🛰️ ${title}`;
+
+        // ★修正ポイント：複製したHTMLの「multi-grid」の中身を確実に空にする
+        // これをしないと、保存時の画面と起動時の復元処理で二重に窓が作られちゃう
+        const gridEl = clonedDoc.querySelector('#multi-grid');
+        if (gridEl) gridEl.innerHTML = '';
+
+        // 複製したHTMLの「saved-data」に、現在のフレーム情報を埋め込む
+        const savedDataEl = clonedDoc.querySelector('script#saved-data');
+        if (savedDataEl) savedDataEl.textContent = JSON.stringify(frames);
+
+        // 文字列として結合
+        let htmlContent = "<!DOCTYPE html>\n" + clonedDoc.outerHTML;
+
+        // ファイルとしてダウンロード
+        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${title}.html`;
+        a.click();
+    }
+
+    // --- 新機能：ロックモード（誤操作防止） ---
+    function toggleLock() {
+        isLocked = !isLocked;
+        const btn = document.getElementById('lock-btn');
+        if (isLocked) {
+            btn.innerHTML = '🔒 ロック中';
+            btn.className = 'btn btn-ghost';
+            document.body.classList.add('locked-mode');
+            sortableInstance.option('disabled', true);
+        } else {
+            btn.innerHTML = '🔓 編集中';
+            btn.className = 'btn btn-warning';
+            document.body.classList.remove('locked-mode');
+            sortableInstance.option('disabled', false);
+        }
+    }
+
+    // --- 新機能：一括リロード ---
+    function reloadAll() {
+        document.querySelectorAll('.multi-frame-item iframe').forEach(ifr => {
+            ifr.src = ifr.src; // srcを再代入することでリロード
+        });
+    }
+
+    // --- 新機能：個別リロードとURLコピー ---
+    function reloadFrame(btn) {
+        const ifr = btn.closest('.resizable-frame').querySelector('iframe');
+        ifr.src = ifr.src;
+    }
+    
+    function copyUrl(btn) {
+        const url = btn.closest('.resizable-frame').dataset.url;
+        // iframe環境でも動きやすい古いコピー方法を使用
+        const textArea = document.createElement("textarea");
+        textArea.value = url;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            alert("URLをコピーしたよ！\n" + url);
+        } catch (err) {
+            prompt("以下のURLをコピーしてね:", url);
+        }
+        document.body.removeChild(textArea);
+    }
+
+    // --- オートリロードの管理 ---
+    function setAutoReload(select) {
+        const frame = select.closest('.resizable-frame');
+        frame.dataset.autoReload = select.value;
+        frame.dataset.lastReload = Date.now();
+    }
+
+    function checkAutoReloads() {
+        const now = Date.now();
+        document.querySelectorAll('.multi-frame-item').forEach(frame => {
+            const minutes = parseInt(frame.dataset.autoReload || '0');
+            if (minutes > 0) {
+                const last = parseInt(frame.dataset.lastReload || now);
+                // 設定された分数（ミリ秒換算）を経過していたら
+                if (now - last >= minutes * 60 * 1000) {
+                    const ifr = frame.querySelector('iframe');
+                    if(ifr) ifr.src = ifr.src;
+                    frame.dataset.lastReload = now;
+                }
+            }
+        });
+    }
+
+    // --- 既存機能 ---
+    function toggleTheme() { 
+        const t = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; 
+        document.documentElement.setAttribute('data-theme', t); 
+        localStorage.setItem('grandTheme', t); 
+    }
+
+    function addUrlWithProxyPrompt() {
+        const url = prompt("監視したいURLを入力してね:");
+        if (!url) return;
+        const useProxy = confirm("プロキシを使用しますか？\n(気象庁などの表示できないサイトは「OK」を押してね)");
+        let name = "監視窓"; try { name = new URL(url).hostname; } catch(e) {}
+        createMultiFrame(url, name, 1, '', '', useProxy);
+    }
+
+    // フレーム生成（オートリロードや新ボタンを追加）
+    function createMultiFrame(url, name, scale = 1, width = '', height = '', useProxy = false, autoReload = '0') {
+        const container = document.getElementById('multi-grid');
+        const frameWrap = document.createElement('div');
+        frameWrap.className = 'resizable-frame multi-frame-item';
+        frameWrap.dataset.url = url;
+        frameWrap.dataset.name = name;
+        frameWrap.dataset.useProxy = useProxy;
+        frameWrap.dataset.autoReload = autoReload;
+        frameWrap.dataset.lastReload = Date.now();
+        
+        if(width) frameWrap.style.width = width;
+        if(height) frameWrap.style.height = height;
+        
+        const displayUrl = useProxy ? PROXY_BASE + encodeURIComponent(url) : url;
+
+        // セレクトボックスの選択状態を作る
+        const sel0 = autoReload == '0' ? 'selected' : '';
+        const sel1 = autoReload == '1' ? 'selected' : '';
+        const sel5 = autoReload == '5' ? 'selected' : '';
+        const sel10 = autoReload == '10' ? 'selected' : '';
+
+        frameWrap.innerHTML = `
+            <div class="frame-header">
+                <div style="display:flex; align-items:center; overflow:hidden;">
+                    <span class="multi-handle">⠿</span>
+                    <span style="white-space:nowrap; max-width: 150px; overflow:hidden; text-overflow:ellipsis;" title="${name}">${name}</span>
+                    ${useProxy ? '<span class="proxy-badge">PROXY</span>' : ''}
+                </div>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <select class="auto-reload-select" onchange="setAutoReload(this)" title="自動更新">
+                        <option value="0" ${sel0}>更新無</option>
+                        <option value="1" ${sel1}>1分</option>
+                        <option value="5" ${sel5}>5分</option>
+                        <option value="10" ${sel10}>10分</option>
+                    </select>
+                    <button class="btn btn-ghost btn-sm" onclick="copyUrl(this)" title="URLをコピー">📋</button>
+                    <button class="btn btn-ghost btn-sm" onclick="reloadFrame(this)" title="リロード">🔄</button>
+                    <input type="range" class="multi-scale-slider" min="0.2" max="2" step="0.1" value="${scale}" oninput="updateFrameScale(this)" style="width:40px;">
+                    <button class="btn btn-danger btn-sm" onclick="this.closest('.resizable-frame').remove()">×</button>
+                </div>
+            </div>
+            <div style="flex:1; overflow:hidden; background:#fff; position:relative;">
+                <iframe src="${displayUrl}" style="position:absolute; top:0; left:0; transform-origin: top left; width:${100/scale}%; height:${100/scale}%; transform:scale(${scale}); border:none;"></iframe>
+            </div>
+        `;
+        container.appendChild(frameWrap);
+    }
+
+    function updateFrameScale(slider) {
+        const scale = slider.value;
+        const iframe = slider.parentElement.parentElement.nextElementSibling.querySelector('iframe');
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.width = (100 / scale) + '%';
+        iframe.style.height = (100 / scale) + '%';
+    }
+
+    function handleDragOver(e, el) { e.preventDefault(); el.classList.add('dragover'); }
+    function handleDragLeave(e, el) { el.classList.remove('dragover'); }
+    function handleDropLink(e, useProxy, el) {
+        e.preventDefault(); el.classList.remove('dragover'); 
+        const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+        if(url && url.startsWith('http')) {
+            let name = useProxy ? "プロキシ窓" : "新窓"; 
+            try { name = new URL(url).hostname; } catch(err) {}
+            createMultiFrame(url, name, 1, '', '', useProxy, '0');
+        } else { alert("有効なURLをドロップしてね！"); }
+    }
+
+    // データ抽出処理（JSON保存とHTML保存で共通使用）
+    function getFramesData() {
+        return Array.from(document.querySelectorAll('.multi-frame-item')).map(el => ({
+            url: el.dataset.url,
+            name: el.dataset.name,
+            scale: el.querySelector('.multi-scale-slider').value,
+            width: el.style.width,
+            height: el.style.height,
+            useProxy: el.dataset.useProxy === 'true',
+            autoReload: el.dataset.autoReload || '0'
+        }));
+    }
+
+    function exportJSON() {
+        const frames = getFramesData();
+        if(frames.length === 0) { alert("保存する窓がありません！"); return; }
+        const blob = new Blob([JSON.stringify({ multiFrames: frames })], {type: 'application/json'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `weather_layout_${new Date().getTime()}.json`; a.click();
+    }
+
+    function importJSON(e, isAppend) {
+        const file = e.target.files[0]; if(!file) return;
+        const r = new FileReader(); 
+        r.onload = (ev) => {
+            try {
+                const j = JSON.parse(ev.target.result);
+                if(j.multiFrames) {
+                    if(!isAppend) document.getElementById('multi-grid').innerHTML = '';
+                    j.multiFrames.forEach(f => createMultiFrame(f.url, f.name, f.scale, f.width, f.height, f.useProxy, f.autoReload));
+                    alert(isAppend ? "データを追加したよ！" : "データを入れ替えたよ！");
+                }
+            } catch(err) { alert("ファイルの読み込みに失敗しました。"); }
+            e.target.value = ''; 
+        }; r.readAsText(file);
+    }
+
+    function clearGrid() { if(confirm("すべて削除しますか？")) document.getElementById('multi-grid').innerHTML = ''; }
+</script>
+</body>
+</html>
             --bg: #0f172a; --panel: #1e293b; --primary: #3b82f6; --text: #f1f5f9;
             --sub-bg: #334155; --border: #475569; --header-bg: #020617; 
             --proxy-color: #fbbf24; --proxy-bg: #451a03;
